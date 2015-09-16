@@ -1,0 +1,1 @@
+SELECT  log_day, log_hour, count(distinct userid) users, COUNT(*) impressions, sum(impflag) impflags FROM log_days WHERE within(lat, lon, 10.0, 48.8436, 2.3238) GROUP BY log_day, log_hour

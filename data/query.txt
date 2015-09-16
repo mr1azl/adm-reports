@@ -1,0 +1,1 @@
+SELECT log_day, log_hour, COUNT(*) impressions FROM log_days GROUP BY log_day, log_hour ORDER BY log_hour

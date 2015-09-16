@@ -1,0 +1,101 @@
+# Spark SQL Query Server
+
+This is a simple server, that takes an SQL Query and run it through Spark SQL.
+It is composed of  :
+  -  A simple netty/resteasy server at localhost:8088/adm
+  -  The web server spins up a spark ocntext, with a local spark, if you want to plug into a real spark cluster
+     just change the master in resources/application.conf accordingly (spark://hostname:7077, mesos:/mesos_master:5050, yarn-client, etc ..)
+
+ It runs the query on a data, you can set, and the name of the table, still in application.conf.
+ For the moment it reads (only ) parquet data. Because of its better fit for analytics, unlike json. beurk ...
+
+# Run it.
+To run the project, make sur you have Java 8 and maven installed.
+
+''' mvn clean package
+    java -jar target/spark-server-0.1-SNAPSHOT.jar
+
+    or just run the 'run.sh' script :)
+    '''
+
+This will start the whole thing at localhost:8088 with the following endpoints:
+
+       localhost:8088/adm/sparkconf : gives back the spark configuration
+       localhost:8088/adm/count : returns the number of logs, basically a log count
+       localhost:8088/adm/query : a POST endpoint that takes the SQL Query
+
+
+As said above, to run a query just send a request :
+
+''' http POST localhost:8088/adm/query < qr.txt ''' or with curl
+''' curl -X POST -d @qr.txt localhost:8088/adm/query '''
+
+
+qr.txt contains the SQL query : ''' SELECT log_day, log_hour, COUNT(*) impressions, AVG(impflag) impfl
+                                    FROM log_days
+                                    GROUP BY log_day, log_hour
+                                    ORDER BY log_hour '''
+
+I have added a simple udf that finds the points contained in certain radius from a point(lat, lon)
+That udf is refered to as "within" with the signature :
+
+'''  within(Double lat, Double lon, Double radius, Double centerLatitude, Double centerLongitude) '''
+
+Query it with :
+
+        ''' SELECT log_day, log_hour, COUNT(*) impressions, AVG(impflag) impfl
+            FROM log_days
+            WHERE within(lat, lon, 150.0, 48.8436, 2.3238)
+            GROUP BY log_day, log_hour
+            ORDER BY log_hour
+        '''
+
+the 'within' udf, uses Spatial4j to compute a Circle shape as descrived here :    https://github.com/locationtech/spatial4j/blob/master/src/test/java/com/spatial4j/core/shape/TestShapesGeo.java
+https://github.com/locationtech/spatial4j/tree/master/src/test/java/com/spatial4j/core/shape
+
+
+# Preprocessing :
+The original logs had the following schema:
+'''root
+   |-- coordinates: array (nullable = true)
+   |    |-- element: double (containsNull = true)
+   |-- impflag: long (nullable = true)
+   |-- log_date: string (nullable = true)
+   |-- log_day: string (nullable = true)
+   |-- log_hour: long (nullable = true)
+   |-- log_tkn: string (nullable = true)
+   |-- pubuid: string (nullable = true)
+   |-- userid: string (nullable = true)
+   '''
+
+the Array[Double] had some issue with parqet, so I blew it into a flat schema like :
+''' root
+     |-- impflag: long (nullable = true)
+     |-- log_date: string (nullable = true)
+     |-- log_tkn: string (nullable = true)
+     |-- pubuid: string (nullable = true)
+     |-- userid: string (nullable = true)
+     |-- lat: double (nullable = true)
+     |-- lon: double (nullable = true)
+     |-- log_day: string (nullable = true)
+     |-- log_hour: integer (nullable = true)
+ '''
+
+The code for this little ETL is the Scala class AdmEtl.scala (wrote it in scala, because dataframe in java
+   are painful). It tranforms the schema, and save the data in parquet format partioned by log_day/log_hour/pubuid ...
+
+
+TODO :
+- add tests
+- LZ4 if necessary
+- Protobuf + Parquet/Avro and get rid of all the json
+- Try the thrift server
+- Bench with Druid / Drill / Presto /Kylin / Impala
+
+
+
+## Start a local standalone spark cluster
+$SPARK_HOME/sbin/start-master.sh
+Check at localhost:8080
+Add a worker
+$SPARK_HOME/bin/spark-class org.apache.spark.deploy.worker.Worker spark://localhost.localdomain:7077

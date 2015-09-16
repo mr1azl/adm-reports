@@ -1,0 +1,3 @@
+{
+  "query" : "SELECT log_day, count(distinct userid) users, COUNT(*) impressions, sum(impflag) FROM log_days  WHERE ST_Contains ((ST_BUFFER(ST_Point(4.835658,45.764043), 20)), ST_Point(coordinates[0], coordinates[1])) GROUP BY log_day "
+}
